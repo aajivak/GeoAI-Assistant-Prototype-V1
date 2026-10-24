@@ -12,6 +12,9 @@ from config.activity_definitions import SUPPORTED_ACTIVITIES, ActivityDefinition
 from config.settings import settings
 from src.api.routes import router as recommend_router
 from src.common.temporal import get_ist_now
+from pathlib import Path
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(
     title="GeoAI Outdoor Activity Recommendation API",
@@ -30,6 +33,16 @@ app.add_middleware(
 
 # Mount routes
 app.include_router(recommend_router)
+
+# Mount static frontend assets and serve web GUI at root
+FRONTEND_DIR = settings.PROJECT_ROOT / "frontend"
+if FRONTEND_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+
+    @app.get("/", include_in_schema=False)
+    async def serve_index():
+        """Serve the standalone web GUI at root."""
+        return FileResponse(str(FRONTEND_DIR / "index.html"))
 
 
 class HealthResponse(BaseModel):

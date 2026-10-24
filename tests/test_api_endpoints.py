@@ -42,3 +42,12 @@ def test_get_activities():
     ]
     for req in required_activities:
         assert req in activity_ids, f"Required activity '{req}' missing from /activities"
+
+
+def test_get_root_gui():
+    """Verify that GET / serves the standalone web GUI index.html."""
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "text/html" in response.headers.get("content-type", "")
+    assert "GeoAI Assistant" in response.text
+    assert "recommendForm" in response.text

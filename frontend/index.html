@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GeoAI Outdoor Activity Recommendation Assistant</title>
+    <!-- Leaflet CSS for OpenStreetMap rendering -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header class="header">
+        <div class="container header-content">
+            <div class="logo-area">
+                <span class="logo-icon">🌍</span>
+                <div>
+                    <h1 class="logo-title">GeoAI Assistant</h1>
+                    <p class="logo-subtitle">Live Geospatial, Weather & Air Quality Activity Planner · CSRE, IIT Bombay</p>
+                </div>
+            </div>
+            <div class="system-status" id="systemStatus">
+                <span class="status-dot"></span>
+                <span id="systemStatusText">Checking live system...</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="container main-content">
+        <!-- Planner Form Section -->
+        <section class="card planner-card">
+            <h2 class="section-title">Outdoor Activity Planner</h2>
+            <p class="section-desc">Ask in natural language for recommendations combining live weather forecasts, hourly air quality, and spatial features.</p>
+            
+            <form id="recommendForm" autocomplete="off">
+                <!-- Query Input -->
+                <div class="form-group">
+                    <label for="queryInput" class="form-label">
+                        Your Outdoor Activity Question
+                        <span class="required">*</span>
+                    </label>
+                    <div class="input-with-examples">
+                        <input 
+                            type="text" 
+                            id="queryInput" 
+                            name="query" 
+                            class="form-control" 
+                            placeholder="e.g. Find a place for cycling tomorrow morning near Nagpur" 
+                            required
+                        >
+                    </div>
+                    <div class="quick-examples">
+                        <span class="example-label">Quick suggestions:</span>
+                        <button type="button" class="btn-chip" data-query="Find a place for cycling tomorrow morning near Nagpur">Cycling near Nagpur</button>
+                        <button type="button" class="btn-chip" data-query="Where can I go running tomorrow morning near Powai?">Running near Powai</button>
+                        <button type="button" class="btn-chip" data-query="I have mild asthma, where is good for a morning walk near Powai?">Asthma walk in Powai</button>
+                        <button type="button" class="btn-chip" data-query="Outdoor tennis after work today near Hinjewadi, any good spots?">Tennis near Hinjewadi</button>
+                        <button type="button" class="btn-chip" data-query="Where can I take sunset photos this evening around Bandra?">Sunset photos in Bandra</button>
+                    </div>
+                </div>
+
+                <!-- Parameters Grid -->
+                <div class="params-grid">
+                    <!-- Search Radius -->
+                    <div class="form-group">
+                        <label for="radiusSelect" class="form-label">Search Radius (km)</label>
+                        <select id="radiusSelect" class="form-control">
+                            <option value="2">2 km (Walking distance)</option>
+                            <option value="5" selected>5 km (Standard default)</option>
+                            <option value="8">8 km (Extended local)</option>
+                            <option value="12">12 km (City-wide cycling/golf)</option>
+                        </select>
+                        <small class="form-hint">Default 5 km radius. Never zero.</small>
+                    </div>
+
+                    <!-- AI Model Option -->
+                    <div class="form-group">
+                        <label class="form-label">AI Reasoning Engine</label>
+                        <div class="toggle-card">
+                            <label class="toggle-label" for="useSlmToggle">
+                                <input type="checkbox" id="useSlmToggle" name="use_slm">
+                                <span class="toggle-switch"></span>
+                                <span class="toggle-text">
+                                    <strong>Enable Qwen 2.5 1.5B (SLM)</strong>
+                                    <small class="toggle-subtext">Deep evidence-grounded synthesis (CPU inference: ~1–2 min). When unchecked, uses instant deterministic engine.</small>
+                                </span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Health Profile Modifiers -->
+                <div class="form-group health-group">
+                    <label class="form-label">Personal Health Sensitivities (Optional)</label>
+                    <div class="health-checkboxes">
+                        <label class="checkbox-pill">
+                            <input type="checkbox" id="healthAsthma" name="has_asthma">
+                            <span>🫁 Asthma / Respiratory</span>
+                        </label>
+                        <label class="checkbox-pill">
+                            <input type="checkbox" id="healthSenior" name="is_senior">
+                            <span>👵 Senior Citizen (Heat/surface sensitivity)</span>
+                        </label>
+                        <label class="checkbox-pill">
+                            <input type="checkbox" id="healthChild" name="is_child">
+                            <span>👶 Child (UV & particulate shield)</span>
+                        </label>
+                        <label class="checkbox-pill">
+                            <input type="checkbox" id="healthPregnant" name="is_pregnant">
+                            <span>🤰 Pregnancy</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="form-actions">
+                    <button type="submit" id="submitBtn" class="btn btn-primary">
+                        <span class="btn-icon">🔍</span>
+                        <span id="btnText">Analyze & Recommend</span>
+                    </button>
+                    <button type="button" id="resetBtn" class="btn btn-secondary">Clear</button>
+                </div>
+            </form>
+
+            <!-- Loading Indicator -->
+            <div id="loadingIndicator" class="loading-container hidden">
+                <div class="spinner"></div>
+                <div class="loading-details">
+                    <h3 id="loadingStageTitle" class="loading-title">Analyzing Geospatial Environment...</h3>
+                    <p id="loadingStageDesc" class="loading-desc">Fetching live geocoding, OpenStreetMap candidate venues, and Open-Meteo hourly weather/AQI...</p>
+                    <div id="slmNotice" class="slm-notice hidden">
+                        <span class="notice-icon">⏱️</span>
+                        <span><strong>Note:</strong> Qwen 2.5 1.5B CPU inference is active. Grounded synthesis on 10-core Intel Core i5 CPU may take 1–2 minutes. Please keep this page open.</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Error Message Card -->
+        <section id="errorCard" class="card error-card hidden">
+            <div class="error-header">
+                <span class="error-icon">⚠️</span>
+                <div>
+                    <h3 id="errorTitle" class="error-title">Recommendation Error</h3>
+                    <p id="errorMessage" class="error-desc"></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Clarification Needed Card -->
+        <section id="clarificationCard" class="card clarification-card hidden">
+            <div class="clarification-header">
+                <span class="clarification-icon">❓</span>
+                <div>
+                    <h3 class="clarification-title">Clarification Needed</h3>
+                    <p id="clarificationQuestion" class="clarification-text"></p>
+                    <p class="clarification-hint">Please refine your question above with the missing location or activity.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Recommendation Results Container -->
+        <section id="resultsSection" class="results-section hidden">
+            <!-- Overall Status Banner -->
+            <div id="statusBanner" class="status-banner">
+                <div class="status-icon-area" id="statusIcon">📍</div>
+                <div class="status-text-area">
+                    <div class="status-badge-row">
+                        <span id="statusBadge" class="badge">RECOMMENDED</span>
+                        <span id="suitableBadge" class="badge">SUITABLE OPTION FOUND</span>
+                        <span id="engineBadge" class="badge badge-outline">ENGINE: DETERMINISTIC</span>
+                    </div>
+                    <h2 id="statusHeadline" class="status-headline">Top Recommendation Available</h2>
+                    <p id="statusReason" class="status-reason"></p>
+                </div>
+            </div>
+
+            <!-- Two-column Layout: Best Venue Card + Map -->
+            <div class="results-grid">
+                <!-- Left: Best Venue & Environmental Facts -->
+                <div class="col-details">
+                    <!-- Primary Venue Card -->
+                    <div class="card venue-card" id="bestVenueCard">
+                        <div class="venue-header">
+                            <div>
+                                <span class="venue-type-tag" id="venueType">Park</span>
+                                <h3 class="venue-title" id="venueName">Venue Name</h3>
+                                <p class="venue-meta" id="venueDistance">0.0 km from anchor</p>
+                            </div>
+                            <div class="score-display">
+                                <div class="score-number" id="venueScore">85</div>
+                                <div class="score-label">/ 100</div>
+                            </div>
+                        </div>
+
+                        <!-- Timing Banner -->
+                        <div class="optimal-time-box">
+                            <span class="time-icon">⏰</span>
+                            <div>
+                                <div class="time-label">OPTIMAL TIME WINDOW</div>
+                                <div class="time-value" id="slotTime">Tomorrow 06:00 IST</div>
+                            </div>
+                        </div>
+
+                        <!-- Metric Groups -->
+                        <div class="metrics-container">
+                            <!-- Weather Metrics -->
+                            <div class="metric-block">
+                                <h4 class="metric-group-title">Live Weather Forecast</h4>
+                                <div class="metric-row">
+                                    <div class="metric-item">
+                                        <span class="m-label">Temperature</span>
+                                        <span class="m-val" id="valTemp">--</span>
+                                    </div>
+                                    <div class="metric-item">
+                                        <span class="m-label">Rain Chance</span>
+                                        <span class="m-val" id="valRainProb">--</span>
+                                    </div>
+                                    <div class="metric-item">
+                                        <span class="m-label">Wind Speed</span>
+                                        <span class="m-val" id="valWind">--</span>
+                                    </div>
+                                    <div class="metric-item">
+                                        <span class="m-label">Humidity</span>
+                                        <span class="m-val" id="valHumidity">--</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Air Quality Metrics -->
+                            <div class="metric-block">
+                                <h4 class="metric-group-title">Live Hourly Air Quality</h4>
+                                <div class="metric-row">
+                                    <div class="metric-item">
+                                        <span class="m-label">PM2.5</span>
+                                        <span class="m-val" id="valPm25">--</span>
+                                    </div>
+                                    <div class="metric-item">
+                                        <span class="m-label">US AQI</span>
+                                        <span class="m-val" id="valUsAqi">--</span>
+                                    </div>
+                                    <div class="metric-item">
+                                        <span class="m-label">Air Condition</span>
+                                        <span class="m-val" id="valAqiCategory">--</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Geographic Context -->
+                            <div class="metric-block">
+                                <h4 class="metric-group-title">Geographic Context Indicators</h4>
+                                <div class="geo-advisory-box" id="geoAdvisory">
+                                    Natural terrain and green canopy analysis.
+                                </div>
+                                <div class="context-tags" id="contextTags"></div>
+                            </div>
+                        </div>
+
+                        <!-- Timing Comparison / Alternatives -->
+                        <div class="timing-note" id="timingNoteBox">
+                            <strong>Temporal Comparison:</strong>
+                            <span id="timingNote">Optimal slot evaluated across upcoming hours.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Interactive Leaflet Map -->
+                <div class="col-map">
+                    <div class="card map-card">
+                        <div class="map-header">
+                            <h3 class="map-title">Geospatial Map</h3>
+                            <span class="map-subtitle" id="mapSubtitle">Evaluating nearby venues</span>
+                        </div>
+                        <div id="map" class="map-container"></div>
+                        <div class="map-legend">
+                            <span class="legend-item"><span class="legend-dot dot-best"></span> Recommended Venue</span>
+                            <span class="legend-item"><span class="legend-dot dot-alt"></span> Alternative Venue</span>
+                            <span class="legend-item"><span class="legend-dot dot-anchor"></span> Search Reference Anchor</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Grounded Explanation Section -->
+            <div class="card explanation-card">
+                <div class="explanation-header">
+                    <div class="exp-title-area">
+                        <span class="exp-icon">🧠</span>
+                        <div>
+                            <h3 class="exp-title">Evidence-Grounded Recommendation Synthesis</h3>
+                            <span class="exp-subtitle" id="explanationSourceBadge">Generated by Deterministic Engine</span>
+                        </div>
+                    </div>
+                    <div class="diagnostics-tag" id="diagnosticsBadge"></div>
+                </div>
+                <div class="explanation-body">
+                    <p id="explanationText" class="explanation-text"></p>
+                </div>
+                <div id="diagnosticsDetails" class="diagnostics-details hidden"></div>
+            </div>
+
+            <!-- Alternative Venues & Slots Table -->
+            <div class="card alternatives-card" id="alternativesCard">
+                <h3 class="section-title">Evaluated Alternatives (Time & Venue Combinations)</h3>
+                <p class="section-desc">Comparing relative rankings across evaluated candidate places and hours.</p>
+                <div class="table-responsive">
+                    <table class="data-table" id="alternativesTable">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Venue</th>
+                                <th>Type</th>
+                                <th>Distance</th>
+                                <th>Slot (IST)</th>
+                                <th>Temp / Rain</th>
+                                <th>PM2.5</th>
+                                <th>Score</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="alternativesTbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Data Attribution & Disclaimer -->
+            <div class="card footer-card">
+                <div class="sources-list">
+                    <strong>Live Data Sources:</strong>
+                    <span id="sourcesText">OpenStreetMap Nominatim, OpenStreetMap Overpass, Open-Meteo Weather, Open-Meteo Air Quality</span>
+                </div>
+                <div class="attribution-text" id="attributionText">
+                    Map data © OpenStreetMap contributors, Weather & Air Quality data by Open-Meteo.com (CC-BY 4.0)
+                </div>
+                <div class="disclaimer-text" id="disclaimerText">
+                    Disclaimer: Suitability scores and generated recommendations are heuristic engineering estimates. They do not constitute certified medical, clinical, or meteorological advice.
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Leaflet JS from CDN -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="/static/app.js"></script>
+</body>
+</html>
