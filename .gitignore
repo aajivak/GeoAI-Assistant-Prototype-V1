@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Binaries & Tunnels
+cloudflared.exe
+*.exe
+
+# Cache & Temporary data
+.cache/
+*.log
+*.incomplete
+
+# IDE
+.vscode/
+.idea/
