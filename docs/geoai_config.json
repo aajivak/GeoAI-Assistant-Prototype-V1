@@ -1,0 +1,13 @@
+{
+  "project": "GeoAI Assistant Prototype V1",
+  "integration_type": "unchanged_pretrained_base_model_with_external_geospatial_pipeline",
+  "base_model_id": "Qwen/Qwen2.5-1.5B-Instruct",
+  "base_model_parameters_approx": 1540000000,
+  "fine_tuned": false,
+  "contains_model_weights": false,
+  "model_role": "evidence_grounded_explanation",
+  "model_loading_repository": "Qwen/Qwen2.5-1.5B-Instruct",
+  "application_repository": "https://github.com/aajivak/GeoAI-Assistant-Prototype-V1",
+  "data_sources": ["OpenStreetMap Nominatim", "OpenStreetMap Overpass", "Open-Meteo Forecast", "Open-Meteo Air Quality"],
+  "note": "This is application integration metadata, not a Transformers config.json or a standalone model checkpoint."
+}

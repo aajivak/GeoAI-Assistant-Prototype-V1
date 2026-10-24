@@ -1,113 +1,131 @@
 ---
 license: apache-2.0
-tags:
-- geoai
-- outdoor-activities
-- recommendation
-- small-language-model
-- geospatial
-- qwen2.5
-datasets:
-- openstreetmap
-- open-meteo
-pipeline_tag: text-generation
-base_model: Qwen/Qwen2.5-1.5B-Instruct
 language:
-- en
+  - en
+base_model: Qwen/Qwen2.5-1.5B-Instruct
+pipeline_tag: text-generation
+tags:
+  - geoai
+  - outdoor-activities
+  - recommendation
+  - small-language-model
+  - geospatial
+  - qwen2.5
 ---
 
-# GeoAI Outdoor Activity Recommendation SLM
+# GeoAI Outdoor Activity Recommendation Assistant — Prototype V1
 
-This model repository hosts the configuration, model card, and evidence-grounded inference runtime for the **GeoAI Outdoor Activity Recommendation Assistant**, developed for the **GeoAI Hackathon at CSRE, IIT Bombay**.
+**GeoAI Hackathon @ CSRE, IIT Bombay**
 
-## Model Overview
+This repository documents the **unchanged** [Qwen2.5-1.5B-Instruct](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct) base model used as an evidence-grounded natural-language explanation component in the GeoAI Outdoor Activity Recommendation Assistant.
 
-- **Base Model:** [Qwen/Qwen2.5-1.5B-Instruct](https://huggingface.co/Qwen/Qwen2.5-1.5B-Instruct)
-- **Parameter Count:** 1.54 Billion parameters (strictly under the hackathon 3.0B ceiling)
-- **Architecture:** Causal Language Model with RoPE, SwiGLU, and sliding window attention
-- **License:** Apache 2.0 (Open weights, permissive research and commercial use)
-- **Primary Runtime Platform:** CPU Inference (`torch.bfloat16`) on standard laptop hardware (Intel Core i5, 16 GB RAM)
+**No fine-tuning or new model weights are claimed.** This repository provides a model card, application integration metadata, and a reproducible base-model loading example. It does **not** host a standalone checkpoint or the complete running FastAPI service.
 
-## Intended Use
+- **Source code and application:** [GeoAI Assistant Prototype V1](https://github.com/aajivak/GeoAI-Assistant-Prototype-V1)
+- **Base model:** `Qwen/Qwen2.5-1.5B-Instruct`
+- **Parameters:** approximately 1.54 billion
+- **Base model license:** Apache-2.0
+- **Observed development environment:** Intel Core i5-1334U, 16 GB RAM, PyTorch CPU inference with `torch.bfloat16`
 
-The model is utilized as the **Evidence-Grounded Explainer and Advisory Synthesizer** within the GeoAI Assistant. 
+## Intended use
 
-### Separation of Concerns & Grounding Invariant
-Small language models must not be asked to memorize global weather forecasts or calculate geographic bearings. In this architecture:
-1. **Deterministic Geospatial Engine:** Solves coordinate projections, computes wind dispersion plume vectors relative to highways and industrial corridors, evaluates Open-Meteo live hourly weather & AQI forecasts, and computes normalized weighted-average suitability scores across candidate venues.
-2. **SLM Advisory Engine:** Receives an immutable **Evidence Table** containing verified observations, and synthesizes natural-language explanations:
-   - What venue and time are recommended, and why they rank above alternatives.
-   - What to prepare, pack, and monitor.
-   - Explicit warnings and postponement advice when environmental conditions are unfavorable.
+The language model synthesizes explanations of outdoor-activity recommendations from a structured evidence table prepared by a separate deterministic backend. It does not independently fetch live weather, discover venues, calculate geospatial relationships, or assign final suitability scores.
 
-## Compliance with Hackathon Rules
+The application pipeline is:
 
-Per the GeoAI Hackathon rulebook:
-> *"If you use a base model unchanged, still create a repository with your configuration and a model card naming the base model and how you use it. It should load with from_pretrained(...)."*
+1. **Interpret the request:** Extract the outdoor activity, location, time window, search radius, and optional health sensitivities.
+2. **Collect geographic and environmental evidence:** Use OpenStreetMap Nominatim and Overpass for geocoding and candidate venues, and Open-Meteo for hourly weather and air-quality forecasts.
+3. **Evaluate candidate venue/time combinations:** Apply activity-specific heuristic scores, contextual indicators, and exclusion rules in Python.
+4. **Generate an explanation:** Provide Qwen with the resulting evidence and require an explanation consistent with the computed recommendation. The application includes post-generation checks and may fall back to a deterministic explanation.
 
-This repository complies by documenting the base model architecture, disclosing all live open data sources (OpenStreetMap, Open-Meteo), specifying generation hyper-parameters, and providing reproducible loading instructions.
+## Repository contents
 
-## Loading and Usage
+- `README.md` — this model card
+- `geoai_config.json` — metadata describing the base-model dependency and GeoAI integration
+- `load_base_model.py` — minimal example loading the original pretrained model
+
+**Model loading:** This repository does not contain weights. To load the actual language model, call `from_pretrained("Qwen/Qwen2.5-1.5B-Instruct")`, as demonstrated below. Do not use this repository ID as a checkpoint path.
+
+## Loading the unchanged base model
+
+Install compatible versions of PyTorch, Transformers, and Accelerate in your Python environment. CPU inference may be slow.
 
 ```python
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-MODEL_ID = "Qwen/Qwen2.5-1.5B-Instruct"
-
-# 1. Load Tokenizer
-tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
-
-# 2. Load Model onto CPU in bfloat16
+model_id = "Qwen/Qwen2.5-1.5B-Instruct"
+tokenizer = AutoTokenizer.from_pretrained(model_id)
 model = AutoModelForCausalLM.from_pretrained(
-    MODEL_ID,
-    dtype=torch.bfloat16,
+    model_id,
+    torch_dtype=torch.bfloat16,
     low_cpu_mem_usage=True,
 )
 model.eval()
 
-# 3. Grounded Prompt Template
-prompt = """<|im_start|>system
-You are an evidence-grounded GeoAI assistant. Explain the recommendation using ONLY the facts in the Evidence Table below.
-<|im_end|>
-<|im_start|>user
-User Query: Where can I go running tomorrow morning near Powai?
---- EVIDENCE TABLE ---
-Activity: Running
-Search Location: Powai
-Has Suitable Option: True
-Top Ranked Venue: Powai Vihar Park (0.49 km away)
-Best Time Slot: 2026-10-25 06:00 IST
-Suitability Score: 78.1/100 (RECOMMENDED)
-Temperature: 25.5°C | Rain: 0.0% | Wind: 1.9 km/h
-PM2.5: 22.0 µg/m³ | US AQI: 72
-Geographic Context: Located within green park canopy.
---- END EVIDENCE ---
-<|im_end|>
-<|im_start|>assistant
+# Illustrative synthetic evidence; NOT a live Powai forecast.
+evidence = """Activity: Running
+Location: Example City
+Suitable option found: No
+Reason: Air quality is unfavorable for strenuous outdoor activity.
+Action: Recommend postponement or an indoor alternative.
 """
 
+messages = [
+    {
+        "role": "system",
+        "content": (
+            "You are an evidence-grounded outdoor activity assistant. "
+            "Use only the supplied evidence. Do not invent venues, "
+            "measurements, or safety assurances."
+        ),
+    },
+    {
+        "role": "user",
+        "content": f"Explain the recommendation using this evidence:\n{evidence}",
+    },
+]
+
+prompt = tokenizer.apply_chat_template(
+    messages,
+    tokenize=False,
+    add_generation_prompt=True,
+)
 inputs = tokenizer(prompt, return_tensors="pt")
 with torch.inference_mode():
-    outputs = model.generate(
+    output = model.generate(
         **inputs,
-        max_new_tokens=180,
-        temperature=0.2,
-        do_sample=True,
+        max_new_tokens=100,
+        do_sample=False,
         pad_token_id=tokenizer.eos_token_id,
     )
-
-print(tokenizer.decode(outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True))
+print(tokenizer.decode(output[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True))
 ```
 
-## Safety and Environmental Health Thresholds
+The example demonstrates base-model inference only. The full recommendation pipeline, evidence construction, safety logic, and output validation are implemented in the [application source repository](https://github.com/aajivak/GeoAI-Assistant-Prototype-V1).
 
-The system pairs the SLM with deterministic heuristic safety exclusions:
-- **Cardio Air-Quality Exclusion:** For strenuous running, cycling, or football, PM2.5 levels exceeding 55 µg/m³ (US AQI > 150) automatically trigger a `not_recommended` status (`has_suitable_option = False`).
-- **Asthma Safeguards:** Particulate thresholds are conservatively tightened to PM2.5 > 35 µg/m³ for asthmatic and respiratory-sensitive individuals.
-- **Wind Dispersion Plume Modeling:** Venues situated within 1.5 km downwind of expressways during heavy traffic hours receive qualitative plume warnings.
+## Safety approach
 
-## Limitations and Disclaimer
+The application applies **heuristic**, activity-dependent air-quality and environmental exclusions before generating the language-model explanation. Reported implementation rules include a PM2.5 threshold above 55 µg/m³ for strenuous cardio activities and stricter treatment for respiratory-sensitive users. These are application heuristics, **not medical certification or universal health thresholds**. US AQI and PM2.5 concentration are distinct measurements and should not be treated as numerically interchangeable.
 
-- **Heuristic Advice:** Suitability scores and generated text are engineering heuristics based on public open forecasts. They do not constitute certified medical, clinical, or official meteorological advice.
-- **Data Latency:** Dependent on the upstream update frequencies of Open-Meteo forecasts and OpenStreetMap Overpass servers.
+A geographic search anchor may be used when venue discovery fails. Such an anchor is **not a verified sports venue**, and the interface should identify it accordingly.
+
+## Observed prototype performance
+
+Development testing on an Intel Core i5-1334U CPU with 16 GB RAM reported approximately 0.96–1.74 generated tokens per second in different runs. Performance varies with prompt length, output length, software environment, and machine load. These are prototype observations, not a standardized benchmark.
+
+## Limitations
+
+- Live data can be incomplete, stale, or unavailable, and OpenStreetMap venue coverage varies by area.
+- Suitability scores are heuristic estimates, not guarantees of safety or suitability.
+- The language model may generate unsupported details; application-level validation is still necessary.
+- Local CPU generation can take several minutes per request.
+- The current repository does not contain model weights, a fine-tuned adapter, or a hosted inference endpoint.
+
+**Disclaimer:** This project does not provide certified medical, public-health, or meteorological advice. Users should consult official advisories and exercise personal judgment.
+
+## Data attribution
+
+- Map and geographic data: © OpenStreetMap contributors
+- Weather and air-quality forecast data: Open-Meteo (observe applicable attribution and licensing terms)
+- Base model: Qwen/Qwen2.5-1.5B-Instruct, Apache-2.0
