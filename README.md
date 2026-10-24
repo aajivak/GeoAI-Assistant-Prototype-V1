@@ -167,7 +167,7 @@ $body = @{
 } | ConvertTo-Json -Depth 5
 
 Invoke-RestMethod `
-    -Uri "https://takes-wool-candidates-genuine.trycloudflare.com/recommend" `
+    -Uri "https://air-orlando-aspect-examined.trycloudflare.com" `
     -Method Post `
     -ContentType "application/json" `
     -Body $body
